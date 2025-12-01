@@ -1,0 +1,27 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../.deployment/backend.Dockerfile
+    container_name: backend-dev
+    command: /app/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./backend/app:/app/app 
+    ports:
+      - "8000:8000"
+    environment:
+      - UVICORN_RELOAD=true
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../.deployment/frontend.Dockerfile
+    container_name: frontend-dev
+    command: npm run dev -- --host
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules       
+    ports:
+      - "5173:5173"
