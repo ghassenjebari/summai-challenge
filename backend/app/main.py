@@ -1,10 +1,8 @@
 from contextlib import asynccontextmanager
 
+from app.routers import bpmn_router
 from fastapi import FastAPI
-
-from app.routers import simplifier_router
-
-
+from fastapi.middleware.cors import CORSMiddleware
 
 
 @asynccontextmanager
@@ -17,6 +15,16 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan, root_path="/api")
 
 
-app.include_router(simplifier_router.app)
+app.include_router(bpmn_router.app)
 
+origins = [
+    "http://localhost:5173",
+]
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
