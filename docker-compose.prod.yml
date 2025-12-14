@@ -15,6 +15,9 @@ services:
     build:
       context: ./frontend
       dockerfile: ../.deployment/frontend.Dockerfile
+      args:
+        VITE_ENVIRONMENT: production
+        VITE_API_URL: http://summai-challenge.api.ghassen-jebbari.de:8000
     ports:
       - "3000:3000"
     restart: always
