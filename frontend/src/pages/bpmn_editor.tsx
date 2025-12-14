@@ -1,11 +1,16 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Modeler from "bpmn-js/lib/Modeler";
 import {connectBpmnSocket, disconnectBpmnSocket, sendDiagramUpdate} from "../api/bnpm_api";
+import { Group, Badge, Paper, Text, Avatar, Stack, Title, Box } from "@mantine/core";
 
 export default function Bpmn_editor() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const modelerRef = useRef<any>(null);
   const applyingRemoteUpdateRef = useRef(false);
+  const [connectedUsers, setConnectedUsers] = useState<string[]>([]);
+  const avatars = useMemo(() => connectedUsers.map(name => (
+    <Avatar key={name} name={name} alt={name} color="initials" allowedInitialsColors={['blue','red']} />
+  )), [connectedUsers]);
 
 
 useEffect(() => {
@@ -36,6 +41,7 @@ useEffect(() => {
         applyingRemoteUpdateRef.current = false;
       }
     },
+    onUsersUpdate: (users) => setConnectedUsers(users), 
   });
 
   const handleChange = async () => {
@@ -60,14 +66,21 @@ useEffect(() => {
 }, []);
 
 
-  return (
-      <div
-          ref={containerRef}
-          style={{
-            width: "100%",
-            height: "600px",
-            border: "1px solid #ccc",
-          }}
-      />
-  );
+return (
+  <Stack>
+    <Group justify="space-between" align="center">
+      <Title order={2}>BPMN Editor</Title>
+      <Group gap="xs">
+        {avatars}
+      </Group>
+    </Group>
+    <Box
+      ref={containerRef}
+      w="100%"
+      h={600}
+      p="sm"
+      style={{ border: "1px solid #ccc" }} 
+    />
+  </Stack>
+);
 }
