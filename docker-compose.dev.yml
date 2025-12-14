@@ -18,6 +18,9 @@ services:
     build:
       context: ./frontend
       dockerfile: ../.deployment/frontend.Dockerfile
+      args:
+        VITE_ENVIRONMENT: development
+        VITE_API_URL: ws://localhost:8000
     container_name: frontend-dev
     command: npm run dev -- --host
     volumes:

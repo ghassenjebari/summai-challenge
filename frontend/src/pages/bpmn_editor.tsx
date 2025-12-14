@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Modeler from "bpmn-js/lib/Modeler";
 import {connectBpmnSocket, disconnectBpmnSocket, sendDiagramUpdate} from "../api/bnpm_api";
 import { Group, Badge, Paper, Text, Avatar, Stack, Title, Box } from "@mantine/core";
+import { env } from "../utils/settings";
 
 export default function Bpmn_editor() {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -19,7 +20,7 @@ useEffect(() => {
   const modeler = new Modeler({ container: containerRef.current });
   modelerRef.current = modeler;
 
-  connectBpmnSocket("ws://localhost:8000/ws/bpmn", {
+  connectBpmnSocket( `${env.VITE_API_URL}/ws/bpmn`, {
     onInitDiagram: async (xml) => {
       try {
         await modeler.importXML(xml);
