@@ -1,87 +1,98 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Modeler from "bpmn-js/lib/Modeler";
-import {connectBpmnSocket, disconnectBpmnSocket, sendDiagramUpdate} from "../api/bnpm_api";
-import { Group, Badge, Paper, Text, Avatar, Stack, Title, Box } from "@mantine/core";
+import { connectBpmnSocket, disconnectBpmnSocket } from "../sockets/bpmn_socket_handler";
+import { Group, Avatar, Stack, Title, Box } from "@mantine/core";
 import { env } from "../utils/settings";
+import { handleChange, handleDblClick, handleElementClick, handleInitDiagram, handleSelectionChanged, handleUpdateDiagram } from "../utils/bpmn_event_handlers";
 
 export default function Bpmn_editor() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const modelerRef = useRef<any>(null);
   const applyingRemoteUpdateRef = useRef(false);
+  const lockedElementsRef = useRef<Record<string, string>>({});
   const [connectedUsers, setConnectedUsers] = useState<string[]>([]);
+  const [lockedElements, setLockedElements] = useState<Record<string, string>>({});
   const avatars = useMemo(() => connectedUsers.map(name => (
     <Avatar key={name} name={name} alt={name} color="initials" allowedInitialsColors={['blue','red']} />
   )), [connectedUsers]);
 
 
-useEffect(() => {
-  if (!containerRef.current) return;  
+  useEffect(() => {
+    if (!containerRef.current) return;
 
-  const modeler = new Modeler({ container: containerRef.current });
-  modelerRef.current = modeler;
+    const modeler = new Modeler({ container: containerRef.current });
+    modelerRef.current = modeler;
+    const eventBus = modeler.get("eventBus");
 
-  connectBpmnSocket( `${env.VITE_API_URL}/ws/bpmn`, {
-    onInitDiagram: async (xml) => {
-      try {
-        await modeler.importXML(xml);
-        modeler.get("canvas").zoom("fit-viewport");
-      } catch (err) {
-        console.error("Failed to import XML from server:", err);
-      }
-    },
-    onUpdateDiagram: async (xml) => {
-      if (!modelerRef.current) return;
+    connectBpmnSocket(`${env.VITE_API_URL}/ws/bpmn`, {
+      onInitDiagram: handleInitDiagram(modelerRef),
+      onUpdateDiagram: handleUpdateDiagram(modelerRef, applyingRemoteUpdateRef),
+      onUsersUpdate: setConnectedUsers,
+      onLockedElementsUpdate: setLockedElements,
+    });
 
-      applyingRemoteUpdateRef.current = true;
-      try {
-        await modelerRef.current.importXML(xml);
-        modelerRef.current.get("canvas").zoom("fit-viewport");
-      } catch (err) {
-        console.error("Failed to apply remote update:", err);
-      } finally {
-        applyingRemoteUpdateRef.current = false;
-      }
-    },
-    onUsersUpdate: (users) => setConnectedUsers(users), 
-  });
+    const commandStackHandler = () => handleChange(modelerRef, applyingRemoteUpdateRef);
+    const elementClickHandler = (e: any) => handleElementClick(e.element, lockedElementsRef.current);
+    const selectionChangedHandler = handleSelectionChanged;
+    const elementDblClickHandler = (event: any) => handleDblClick(event, lockedElementsRef);
 
-  const handleChange = async () => {
-    if (!modelerRef.current || applyingRemoteUpdateRef.current) return;
 
-    try {
-      const { xml } = await modelerRef.current.saveXML({ format: true });
-      sendDiagramUpdate(xml);
-    } catch (err) {
-      console.error("Failed to save XML:", err);
-    }
-  };
+    eventBus.on("commandStack.changed", commandStackHandler);
+    eventBus.on("element.click", elementClickHandler);
+    eventBus.on("selection.changed", selectionChangedHandler);
+    eventBus.on("element.dblclick", 10000, elementDblClickHandler);
 
-  const eventBus = modeler.get("eventBus");
-  eventBus.on("commandStack.changed", handleChange);
+    return () => {
+      eventBus.off("commandStack.changed", commandStackHandler);
+      eventBus.off("element.click", elementClickHandler);
+      eventBus.off("selection.changed", selectionChangedHandler);
+      eventBus.off("element.dblclick", elementDblClickHandler);
 
-  return () => {
-    modeler.destroy();
-    modelerRef.current = null;
+
+      modeler.destroy();
+      modelerRef.current = null;
     disconnectBpmnSocket()
-  };
-}, []);
+    };
+}, []); 
 
+useEffect(() => {
+  lockedElementsRef.current = lockedElements;
+  if (!modelerRef.current) return;
 
-return (
-  <Stack>
-    <Group justify="space-between" align="center">
-      <Title order={2}>BPMN Editor</Title>
+  const canvas = modelerRef.current.get("canvas");
+  const elementRegistry = modelerRef.current.get("elementRegistry");
+
+  elementRegistry.forEach((el: any) => canvas.removeMarker(el.id, "locked"));
+
+  Object.keys(lockedElements).forEach((id) => {
+    const element = elementRegistry.get(id);
+    if (element) canvas.addMarker(id, "locked");
+  });
+}, [lockedElements]);
+
+  return (
+    <Stack>
+      <Group justify="space-between" align="center">
+        <Title order={2}>BPMN Editor</Title>
       <Group gap="xs">
         {avatars}
       </Group>
-    </Group>
-    <Box
-      ref={containerRef}
-      w="100%"
-      h={600}
-      p="sm"
-      style={{ border: "1px solid #ccc" }} 
-    />
-  </Stack>
-);
+      </Group>
+      <Box
+        ref={containerRef}
+        w="100%"
+        h={600}
+        p="sm"
+        style={{ border: "1px solid #ccc" }}
+      />
+      <style>
+        {`
+          .djs-element.locked .djs-visual > :first-child {
+            stroke: red !important;
+            stroke-width: 4px !important;
+          }
+        `}
+      </style>
+    </Stack>
+  );
 }
