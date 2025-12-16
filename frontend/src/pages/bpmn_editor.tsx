@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Modeler from "bpmn-js/lib/Modeler";
-import { clientIdRef, connectBpmnSocket, disconnectBpmnSocket } from "../sockets/bpmn_socket_handler";
+import { connectBpmnSocket, disconnectBpmnSocket } from "../sockets/bpmn_socket_handler";
 import { Group, Avatar, Stack, Title, Box } from "@mantine/core";
 import { env } from "../utils/settings";
-import { handleInitDiagram, handleUpdateDiagram, lockElement, unlockElement, sendDiagramUpdate } from "../sockets/bpmn_socket_actions";
+import { handleChange, handleDblClick, handleElementClick, handleInitDiagram, handleSelectionChanged, handleUpdateDiagram } from "../utils/bpmn_event_handlers";
 
 export default function Bpmn_editor() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const modelerRef = useRef<any>(null);
   const applyingRemoteUpdateRef = useRef(false);
+  const lockedElementsRef = useRef<Record<string, string>>({});
   const [connectedUsers, setConnectedUsers] = useState<string[]>([]);
   const [lockedElements, setLockedElements] = useState<Record<string, string>>({});
   const avatars = useMemo(() => connectedUsers.map(name => (
@@ -16,60 +17,46 @@ export default function Bpmn_editor() {
   )), [connectedUsers]);
 
 
-useEffect(() => {
-  if (!containerRef.current) return;
+  useEffect(() => {
+    if (!containerRef.current) return;
 
-  const modeler = new Modeler({ container: containerRef.current });
-  modelerRef.current = modeler;
+    const modeler = new Modeler({ container: containerRef.current });
+    modelerRef.current = modeler;
+    const eventBus = modeler.get("eventBus");
 
-  connectBpmnSocket(`${env.VITE_API_URL}/ws/bpmn`, {
-    onInitDiagram: handleInitDiagram(modelerRef),
-    onUpdateDiagram: handleUpdateDiagram(modelerRef, applyingRemoteUpdateRef),
-    onUsersUpdate: setConnectedUsers,
-    onLockedElementsUpdate: setLockedElements,
-  });
-
-  const handleChange = async () => {
-    if (!modelerRef.current || applyingRemoteUpdateRef.current) return;
-    
-    try {
-      const { xml } = await modelerRef.current.saveXML({ format: true });
-      sendDiagramUpdate(xml);
-    } catch (err) {
-      console.error("Failed to save XML:", err);
-    }
-  };
-
-  const eventBus = modeler.get("eventBus");
-  const handleElementClick = ({ element }: any) => {
-    if (!element.id) return;
-    if (lockedElements[element.id] && lockedElements[element.id] !== clientIdRef.current) return;
-    lockElement(element.id);
-  };
-
-  const handleSelectionChanged = (event: any) => {
-    const oldSelection = event.oldSelection || [];
-    const newSelection = event.newSelection || [];
-    oldSelection.forEach((el: any) => {
-      if (!newSelection.includes(el)) unlockElement(el.id);
+    connectBpmnSocket(`${env.VITE_API_URL}/ws/bpmn`, {
+      onInitDiagram: handleInitDiagram(modelerRef),
+      onUpdateDiagram: handleUpdateDiagram(modelerRef, applyingRemoteUpdateRef),
+      onUsersUpdate: setConnectedUsers,
+      onLockedElementsUpdate: setLockedElements,
     });
-  };
 
-  eventBus.on("commandStack.changed", handleChange);
-  eventBus.on("element.click", handleElementClick);
-  eventBus.on("selection.changed", handleSelectionChanged);
+    const commandStackHandler = () => handleChange(modelerRef, applyingRemoteUpdateRef);
+    const elementClickHandler = (e: any) => handleElementClick(e.element, lockedElementsRef.current);
+    const selectionChangedHandler = handleSelectionChanged;
+    const elementDblClickHandler = (event: any) => handleDblClick(event, lockedElementsRef);
 
-  return () => {
-    eventBus.off("commandStack.changed", handleChange);
-    eventBus.off("element.click", handleElementClick);
-    eventBus.off("selection.changed", handleSelectionChanged);
-    modeler.destroy();
-    modelerRef.current = null;
+
+    eventBus.on("commandStack.changed", commandStackHandler);
+    eventBus.on("element.click", elementClickHandler);
+    eventBus.on("selection.changed", selectionChangedHandler);
+    eventBus.on("element.dblclick", 10000, elementDblClickHandler);
+
+    return () => {
+      eventBus.off("commandStack.changed", commandStackHandler);
+      eventBus.off("element.click", elementClickHandler);
+      eventBus.off("selection.changed", selectionChangedHandler);
+      eventBus.off("element.dblclick", elementDblClickHandler);
+
+
+      modeler.destroy();
+      modelerRef.current = null;
     disconnectBpmnSocket()
-  };
+    };
 }, []); 
 
 useEffect(() => {
+  lockedElementsRef.current = lockedElements;
   if (!modelerRef.current) return;
 
   const canvas = modelerRef.current.get("canvas");
@@ -81,7 +68,7 @@ useEffect(() => {
     const element = elementRegistry.get(id);
     if (element) canvas.addMarker(id, "locked");
   });
-}, [lockedElements]); 
+}, [lockedElements]);
 
   return (
     <Stack>

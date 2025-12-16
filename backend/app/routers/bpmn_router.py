@@ -28,10 +28,11 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             msg = json.loads(data)
             msg_type = msg.get("type")
-            xml = msg.get("xml")
-            if msg_type == "updateDiagram" and xml:
-                bpmn_xml = xml
-                await manager.broadcast(data, sender=websocket)
+            if msg_type == "updateDiagram":
+                xml = msg.get("xml")
+                if xml:
+                    bpmn_xml = xml
+                    await manager.broadcast(data, sender=websocket)
             elif msg_type == "lockElement":
                 element_id = msg.get("elementId")
                 if element_id:

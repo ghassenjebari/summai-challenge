@@ -1,4 +1,4 @@
-import { BpmnSocketMessageSchema, LockElementSchema, UnlockElementSchema, UpdateDiagramSchema } from "../schemas/bpmn_socket_schemas";
+import { BpmnSocketMessageSchema } from "../schemas/bpmn_socket_schemas";
 
 export let socket: WebSocket | null = null;
 export const clientIdRef = { current: null as string | null };
