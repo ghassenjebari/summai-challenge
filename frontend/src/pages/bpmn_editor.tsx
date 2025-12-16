@@ -4,6 +4,7 @@ import { connectBpmnSocket, disconnectBpmnSocket } from "../sockets/bpmn_socket_
 import { Group, Avatar, Stack, Title, Box } from "@mantine/core";
 import { env } from "../utils/settings";
 import { handleChange, handleDblClick, handleElementClick, handleInitDiagram, handleSelectionChanged, handleUpdateDiagram } from "../utils/bpmn_event_handlers";
+import { applyLockedMarkersIncremental, withLockCheck } from "../utils/bpmn_helpers";
 
 export default function Bpmn_editor() {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -25,28 +26,32 @@ export default function Bpmn_editor() {
     const eventBus = modeler.get("eventBus");
 
     connectBpmnSocket(`${env.VITE_API_URL}/ws/bpmn`, {
-      onInitDiagram: handleInitDiagram(modelerRef),
-      onUpdateDiagram: handleUpdateDiagram(modelerRef, applyingRemoteUpdateRef),
+      onInitDiagram: handleInitDiagram(modelerRef,lockedElementsRef),
+      onUpdateDiagram: handleUpdateDiagram(modelerRef,lockedElementsRef,applyingRemoteUpdateRef),
       onUsersUpdate: setConnectedUsers,
       onLockedElementsUpdate: setLockedElements,
     });
 
     const commandStackHandler = () => handleChange(modelerRef, applyingRemoteUpdateRef);
     const elementClickHandler = (e: any) => handleElementClick(e.element, lockedElementsRef.current);
-    const selectionChangedHandler = handleSelectionChanged;
+    const selectionChangedHandler = (event: any) => handleSelectionChanged(event, applyingRemoteUpdateRef);
     const elementDblClickHandler = (event: any) => handleDblClick(event, lockedElementsRef);
 
 
-    eventBus.on("commandStack.changed", commandStackHandler);
-    eventBus.on("element.click", elementClickHandler);
+    const lockWrappedClick = withLockCheck(elementClickHandler, lockedElementsRef);
+    const lockWrappedDblClick = withLockCheck(elementDblClickHandler, lockedElementsRef);
+
+
+    eventBus.on("element.click", 9000, lockWrappedClick);
+    eventBus.on("element.dblclick", 10000, lockWrappedDblClick);
     eventBus.on("selection.changed", selectionChangedHandler);
-    eventBus.on("element.dblclick", 10000, elementDblClickHandler);
+    eventBus.on("commandStack.changed", commandStackHandler);
 
     return () => {
-      eventBus.off("commandStack.changed", commandStackHandler);
-      eventBus.off("element.click", elementClickHandler);
-      eventBus.off("selection.changed", selectionChangedHandler);
-      eventBus.off("element.dblclick", elementDblClickHandler);
+      eventBus.off("element.click", lockWrappedClick);
+      eventBus.off("element.dblclick", lockWrappedDblClick);
+      eventBus.on("selection.changed", selectionChangedHandler);
+      eventBus.on("commandStack.changed", commandStackHandler);
 
 
       modeler.destroy();
@@ -55,20 +60,11 @@ export default function Bpmn_editor() {
     };
 }, []); 
 
-useEffect(() => {
-  lockedElementsRef.current = lockedElements;
-  if (!modelerRef.current) return;
-
-  const canvas = modelerRef.current.get("canvas");
-  const elementRegistry = modelerRef.current.get("elementRegistry");
-
-  elementRegistry.forEach((el: any) => canvas.removeMarker(el.id, "locked"));
-
-  Object.keys(lockedElements).forEach((id) => {
-    const element = elementRegistry.get(id);
-    if (element) canvas.addMarker(id, "locked");
-  });
-}, [lockedElements]);
+  useEffect(() => {
+    if (!modelerRef.current) return;
+    applyLockedMarkersIncremental(modelerRef.current, lockedElementsRef.current, lockedElements);
+    lockedElementsRef.current = lockedElements;
+  }, [lockedElements]);
 
   return (
     <Stack>

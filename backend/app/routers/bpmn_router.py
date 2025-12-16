@@ -36,6 +36,9 @@ async def websocket_endpoint(websocket: WebSocket):
             elif msg_type == "lockElement":
                 element_id = msg.get("elementId")
                 if element_id:
+                    prev_locked = next((eid for eid, uid in locked_elements.items() if uid == user_id), None)
+                    if prev_locked:
+                        locked_elements.pop(prev_locked)
                     locked_elements[element_id] = user_id
                     await manager.broadcast(json.dumps({
                         "type": "lockedElements",
