@@ -1,21 +1,24 @@
 import { clientIdRef } from "../sockets/bpmn_socket_handler";
 import { sendDiagramUpdate, lockElement, unlockElement } from "../sockets/bpmn_socket_actions";
+import { applyLockedMarkersIncremental } from "./bpmn_helpers";
 
-export const handleInitDiagram = (modelerRef: any) => async (xml: string) => {
+export const handleInitDiagram = (modelerRef: any, lockedElementsRef: any,) => async (xml: string) => {
   console.log("Init diagram received");
   try {
     await modelerRef.current.importXML(xml);
+    applyLockedMarkersIncremental(modelerRef.current, {}, lockedElementsRef.current);
     modelerRef.current.get("canvas").zoom("fit-viewport");
   } catch (err) {
     console.error("Failed to import XML:", err);
   }
 };
 
-export const handleUpdateDiagram = (modelerRef: any, applyingRemoteUpdateRef: any) => async (xml: string) => {
+export const handleUpdateDiagram = (modelerRef: any, lockedElementsRef: any, applyingRemoteUpdateRef: any) => async (xml: string) => {
   console.log("Update diagram received");
   applyingRemoteUpdateRef.current = true;
   try {
     await modelerRef.current.importXML(xml);
+    applyLockedMarkersIncremental(modelerRef.current, {}, lockedElementsRef.current);
     modelerRef.current.get("canvas").zoom("fit-viewport");
   } catch (err) {
     console.error("Failed to apply remote update:", err);
@@ -40,7 +43,8 @@ export const handleElementClick = (element: any, lockedElements: Record<string, 
   lockElement(element.id);
 };
 
-export const handleSelectionChanged = (event: any) => {
+export const handleSelectionChanged = (event: any,  applyingRemoteUpdateRef: React.MutableRefObject<boolean>) => {
+  if (applyingRemoteUpdateRef.current) return;
   const oldSelection = event.oldSelection || [];
   const newSelection = event.newSelection || [];
   oldSelection.forEach((el: any) => {
